@@ -1,0 +1,60 @@
+import network
+import time
+from machine import Pin
+import dht
+import ujson
+from umqtt.simple import MQTTClient
+
+# Parâmetros do Servidor MQTT
+MQTT_CLIENT_ID = "micropython-weather-demo"  # ID do cliente MQTT
+MQTT_BROKER    = "broker.mqttdashboard.com"  # Broker MQTT
+MQTT_USER      = ""  # Usuário MQTT (se necessário)
+MQTT_PASSWORD  = ""  # Senha MQTT (se necessário)
+MQTT_TOPIC     = "wokwi-weather"  # Tópico para publicar as informações
+
+# Inicializa o sensor DHT22 no pino 15
+sensor = dht.DHT22(Pin(15))
+
+# Conectando-se à rede Wi-Fi
+print("Conectando ao WiFi", end="")
+sta_if = network.WLAN(network.STA_IF)
+sta_if.active(True)
+sta_if.connect('Wokwi-GUEST', '')  # Nome da rede Wi-Fi e senha (vazia nesse caso)
+while not sta_if.isconnected():
+  print(".", end="")  # Enquanto não conectar, exibe um ponto a cada 0.1 segundos
+  time.sleep(0.1)
+print(" Conectado!")
+
+# Conectando ao servidor MQTT
+print("Conectando ao servidor MQTT... ", end="")
+client = MQTTClient(MQTT_CLIENT_ID, MQTT_BROKER, user=MQTT_USER, password=MQTT_PASSWORD)
+client.connect()  # Conecta ao broker MQTT
+
+print("Conectado!")
+
+# Exibe a mensagem apenas uma vez
+print("Medindo as condições climáticas...")
+
+# Loop principal
+prev_weather = ""  # Inicializa a variável para controlar mudanças de temperatura e umidade
+while True:
+  sensor.measure()  # Realiza a medição de temperatura e umidade
+  temp = sensor.temperature()  # Temperatura medida
+  humidity = sensor.humidity()  # Umidade medida
+  
+  message = ujson.dumps({
+    "temp": temp,
+    "humidity": humidity,
+  })
+  
+  # Se os dados de clima mudarem, publica no servidor MQTT
+  if message != prev_weather:
+    print("Atualizado!")
+    print("Enviando para o tópico MQTT {}: {}".format(MQTT_TOPIC, message))
+    client.publish(MQTT_TOPIC, message)  # Publica a mensagem no tópico MQTT
+    prev_weather = message  # Atualiza a variável prev_weather com os novos dados
+  else:
+    # Caso não haja mudança, exibe a temperatura atual
+    print(f"{temp} °C")
+  
+  time.sleep(1)  # Aguarda 1 segundo antes de fazer a próxima medição
